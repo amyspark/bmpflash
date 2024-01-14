@@ -12,8 +12,12 @@ struct serialInterface_t
 {
 private:
 	HANDLE device{INVALID_HANDLE_VALUE};
+	mutable std::array<uint8_t, 4096U> readBuffer{};
+	mutable size_t readBufferFullness{0U};
+	mutable size_t readBufferOffset{0U};
 
 	void handleDeviceError(std::string_view operation) noexcept;
+	void refillBuffer() const;
 
 public:
 	serialInterface_t() noexcept = default;

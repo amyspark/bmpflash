@@ -269,21 +269,48 @@ void serialInterface_t::writePacket(const std::string_view &packet) const
 }
 
 // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
+void serialInterface_t::refillBuffer() const
+{
+	DWORD bytesReceived = 0;
+	// Try to fill the read buffer, and if that fails, bail
+	if (!ReadFile(device, readBuffer.data(), static_cast<size_t>(readBuffer.size()), &bytesReceived, nullptr))
+	{
+		console.error("Read from device failed ("sv, GetLastError(), ")"sv);
+		throw bmpCommsError_t{};
+	}
+	/* We now have more data, so update the read buffer counters */
+	readBufferFullness = bytesReceived;
+	readBufferOffset = 0U;
+}
+
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
 std::string serialInterface_t::readPacket() const
 {
 	std::array<char, bmp_t::maxPacketSize + 1U> packet{};
-	DWORD read = 0;
 	size_t length{0};
-	for (; length < packet.size(); length += read)
+	// Try gathering a '#' terminated response
+	while (length < packet.size())
 	{
-		// Due to the protocol's structure, best we can do is reading a single byte at a time.
-		if (!ReadFile(device, packet.data() + length, 1U, &read, nullptr))
+		// Check if we need more data or should use what's in the buffer already
+		if (readBufferOffset == readBufferFullness)
+			refillBuffer();
+
+		// Look for an end of message marker
+		size_t responseLength{0U};
+		while (readBufferOffset + responseLength < readBufferFullness && length + responseLength < readBuffer.size())
 		{
-			console.error("Read from device failed ("sv, GetLastError(), "), read "sv, length, " bytes");
-			throw bmpCommsError_t{};
+			// If we've found one then stop scanning
+			if (readBuffer[readBufferOffset + responseLength++] == '#')
+				break;
 		}
-		if (read && packet[length] == '#')
+		// We now either have a remote end of message marker, or need all the data from the buffer
+		memcpy(packet.data() + length, readBuffer.data() + readBufferOffset, responseLength);
+		readBufferOffset += responseLength;
+		length += responseLength - 1U;
+		// If it's a remote end of message marker, break out the loop
+		if (packet[length] == '#')
 			break;
+		++length;
 	}
 
 	// Adjust the length to remove the beginning '&' (the ending '#' is already taken care of in the read loop)
