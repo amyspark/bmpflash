@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // SPDX-FileCopyrightText: 2023a-2024 1BitSquared <info@1bitsquared.com>
 // SPDX-FileContributor: Written by Rachel Mant <git@dragonmux.network>
+#include <algorithm>
 #include <cstdint>
 #include <cstddef>
 #include <array>
@@ -273,7 +274,7 @@ void serialInterface_t::refillBuffer() const
 {
 	DWORD bytesReceived = 0;
 	// Try to fill the read buffer, and if that fails, bail
-	if (!ReadFile(device, readBuffer.data(), static_cast<size_t>(readBuffer.size()), &bytesReceived, nullptr))
+	if (!ReadFile(device, readBuffer.data(), bufferSize, &bytesReceived, nullptr))
 	{
 		console.error("Read from device failed ("sv, GetLastError(), ")"sv);
 		throw bmpCommsError_t{};
@@ -296,15 +297,18 @@ std::string serialInterface_t::readPacket() const
 			refillBuffer();
 
 		// Look for an end of message marker
-		size_t responseLength{0U};
-		while (readBufferOffset + responseLength < readBufferFullness && length + responseLength < readBuffer.size())
-		{
-			// If we've found one then stop scanning
-			if (readBuffer[readBufferOffset + responseLength++] == '#')
-				break;
-		}
+		const auto *const cbegin {readBuffer.data() + readBufferOffset};
+
+		const auto responseLength = [&]() {
+			for (size_t i = 0; i < readBufferFullness; i++) {
+				if (cbegin[i] == '#')
+					return i;
+			}
+			return readBufferFullness;
+		}();
+
 		// We now either have a remote end of message marker, or need all the data from the buffer
-		memcpy(packet.data() + length, readBuffer.data() + readBufferOffset, responseLength);
+		memcpy(packet.data() + length, cbegin, responseLength);
 		readBufferOffset += responseLength;
 		length += responseLength - 1U;
 		// If it's a remote end of message marker, break out the loop
@@ -316,9 +320,8 @@ std::string serialInterface_t::readPacket() const
 	// Adjust the length to remove the beginning '&' (the ending '#' is already taken care of in the read loop)
 	--length;
 	// Make a new std::string of an appropriate length
-	std::string result(length + 1U, '\0');
 	// And copy the result string in, returning it
-	std::memcpy(result.data(), packet.data() + 1U, length);
+	std::string result(packet.data() + 1U, length);
 	console.debug("Remote read: "sv, result);
 	return result;
 }

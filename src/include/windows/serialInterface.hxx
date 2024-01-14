@@ -11,8 +11,9 @@
 struct serialInterface_t
 {
 private:
+	static constexpr size_t bufferSize = 4096U;
 	HANDLE device{INVALID_HANDLE_VALUE};
-	mutable std::array<uint8_t, 4096U> readBuffer{};
+	mutable std::array<uint8_t, bufferSize> readBuffer{};
 	mutable size_t readBufferFullness{0U};
 	mutable size_t readBufferOffset{0U};
 
