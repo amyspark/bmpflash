@@ -13,7 +13,7 @@ struct serialInterface_t
 private:
 	HANDLE device{INVALID_HANDLE_VALUE};
 
-	void handleDeviceError(const std::string_view operation) noexcept;
+	void handleDeviceError(std::string_view operation) noexcept;
 
 public:
 	serialInterface_t() noexcept = default;
